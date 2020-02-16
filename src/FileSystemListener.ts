@@ -131,6 +131,13 @@ export default class FileSystemListener {
             return;
         }
 
+        console.log(
+            "should ignore " +
+                docUri.fsPath +
+                " ? " +
+                PerforceSCMProvider.shouldIgnore(docUri)
+        );
+
         //If this doc has already been checked, just returned
         if (
             FileSystemListener._lastCheckedFileUri &&
@@ -160,8 +167,9 @@ export default class FileSystemListener {
     // https://github.com/stef-levesque/vscode-perforce/issues/110
     private static tryEditFile(uri: Uri): Promise<boolean> {
         if (
-            PerforceSCMProvider.hasOpenFile(uri) &&
-            !PerforceSCMProvider.mayHaveConflictForFile(uri)
+            PerforceSCMProvider.shouldIgnore(uri) ||
+            (PerforceSCMProvider.hasOpenFile(uri) &&
+                !PerforceSCMProvider.mayHaveConflictForFile(uri))
         ) {
             return Promise.resolve(true);
         } else {
@@ -193,11 +201,10 @@ export default class FileSystemListener {
 
     private onFileDeleted(uri: Uri) {
         const fileExcludes = Object.keys(workspace.getConfiguration("files").exclude);
-        const ignoredPatterns = this._p4ignore.concat(fileExcludes);
 
-        const shouldIgnore: boolean = micromatch.isMatch(uri.fsPath, ignoredPatterns, {
-            dot: true
-        });
+        const shouldIgnore =
+            micromatch.isMatch(uri.fsPath, fileExcludes) ||
+            PerforceSCMProvider.shouldIgnore(uri);
 
         // Only `p4 delete` files that are not marked as ignored either in:
         // .p4ignore

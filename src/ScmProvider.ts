@@ -506,6 +506,18 @@ export class PerforceSCMProvider {
         return this.instances.some(inst => inst._model.mayHaveConflictForFile(uri));
     }
 
+    public static shouldIgnore(uri: Uri) {
+        // ignore files where there are no valid instances for that file
+        // or it's in an instance's p4 ignore
+        const matchingClients = this.instances.filter(inst =>
+            inst._model.isInClientRoot(uri)
+        );
+        return (
+            !matchingClients ||
+            matchingClients.some(inst => inst._model.shouldIgnore(uri))
+        );
+    }
+
     /**
      * This is the default action when an resource is clicked in the viewlet.
      * For ADD, AND UNDELETE just show the local file.

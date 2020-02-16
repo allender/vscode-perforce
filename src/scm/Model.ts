@@ -19,6 +19,7 @@ import { Resource } from "./Resource";
 import * as Path from "path";
 import * as vscode from "vscode";
 import { DebouncedFunction, debounce } from "../Debounce";
+import { P4Ignore } from "../P4Ignore";
 
 function isResourceGroup(arg: any): arg is SourceControlResourceGroup {
     return arg.id !== undefined;
@@ -55,6 +56,7 @@ export interface ResourceGroup extends SourceControlResourceGroup {
 
 export class Model implements Disposable {
     private _disposables: Disposable[] = [];
+    private _ignores?: P4Ignore;
 
     private _onDidChange = new EventEmitter<void>();
     public get onDidChange(): Event<void> {
@@ -142,6 +144,18 @@ export class Model implements Disposable {
         this._disposables.push(
             Display.onActiveFileStatusKnown(this.checkForConflicts.bind(this))
         );
+        this.getP4Ignores()
+            .then(ignores => (this._ignores = ignores))
+            .catch(err =>
+                Display.channel.appendLine(
+                    "Error loading p4 ignores for " + this.workspaceUri + " : " + err
+                )
+            );
+    }
+
+    public isInClientRoot(uri: Uri) {
+        const clientRoot = this._infos.get("Client root") ?? this._workspaceUri.fsPath;
+        return uri.fsPath.startsWith(clientRoot);
     }
 
     public mayHaveConflictForFile(uri: Uri) {
@@ -1409,5 +1423,40 @@ export class Model implements Disposable {
 
         // there may be gaps due to missing shelved files - map to the correct positions
         return files.map(file => all.find(fs => fs["depotFile"] === file));
+    }
+
+    public shouldIgnore(file: Uri): boolean {
+        if (!this._ignores) {
+            return false;
+        }
+        return this._ignores.shouldIgnore(file.fsPath);
+    }
+
+    private async getP4Ignores() {
+        const p4IgnoreFileNames = (
+            await PerforceService.getEnvironment(
+                this.workspaceUri,
+                "P4IGNORE",
+                ".p4ignore"
+            )
+        ).split(";");
+        const allProms = p4IgnoreFileNames.map(path =>
+            this.findMatchingIgnoreFiles(path)
+        );
+        const allFileNames = (await Promise.all(allProms)).reduce((all, cur) =>
+            all.concat(cur)
+        );
+
+        return P4Ignore.fromFiles(allFileNames);
+    }
+
+    private async findMatchingIgnoreFiles(path: string) {
+        const pattern = new vscode.RelativePattern(
+            this._workspaceUri ? this._workspaceUri.fsPath : "",
+            path
+        );
+        return (await workspace.findFiles(pattern, undefined, 1))
+            .map(f => f.fsPath)
+            .sort((a, b) => a.length - b.length);
     }
 }

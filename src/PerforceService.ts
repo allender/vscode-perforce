@@ -289,29 +289,25 @@ export namespace PerforceService {
     }
 
     export function getConfigFilename(resource: Uri): Promise<string> {
-        return new Promise((resolve, reject) => {
-            PerforceService.executeAsPromise(resource, "set", "-q")
-                .then(stdout => {
-                    let configIndex = stdout.indexOf("P4CONFIG=");
-                    if (configIndex === -1) {
-                        resolve(".p4config");
-                        return;
-                    }
+        return getEnvironment(resource, "P4ONFIG", ".p4config");
+    }
 
-                    configIndex += "P4CONFIG=".length;
-                    const endConfigIndex = stdout.indexOf("\n", configIndex);
-                    if (endConfigIndex === -1) {
-                        //reject("P4 set -q parsing for P4CONFIG contains unexpected format");
-                        resolve(".p4config");
-                        return;
-                    }
+    export async function getEnvironment(
+        resource: Uri,
+        item: string,
+        defaultValue: string
+    ) {
+        const token = item + "=";
+        const stdout = await PerforceService.executeAsPromise(resource, "set", "-q");
+        const idx = stdout.indexOf(token);
+        if (idx < 0) {
+            return defaultValue;
+        }
+        const endIdx = stdout.indexOf("\n", idx + token.length);
+        if (endIdx < 0) {
+            return defaultValue;
+        }
 
-                    //Resolve with p4 config filename as string
-                    resolve(stdout.substring(configIndex, endConfigIndex));
-                })
-                .catch(err => {
-                    reject(err);
-                });
-        });
+        return stdout.substring(idx, endIdx);
     }
 }
