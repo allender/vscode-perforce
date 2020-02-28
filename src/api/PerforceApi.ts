@@ -96,7 +96,7 @@ export type ChangeSpecOptions = {
     existingChangelist?: string;
 };
 
-const changeFlags = flagMapper<ChangeSpecOptions>([], "existingChangelist", true, "-o");
+const changeFlags = flagMapper<ChangeSpecOptions>([], "existingChangelist", true, ["-o"]);
 
 const outputChange = makeSimpleCommand("change", changeFlags);
 
@@ -540,3 +540,73 @@ export async function isLoggedIn(resource: vscode.Uri): Promise<boolean> {
 }
 
 export const logout = makeSimpleCommand<NoOpts>("logout", () => []);
+
+export interface FilelogOptions {
+    file: PerforceFile;
+}
+
+const filelogFlags = flagMapper<FilelogOptions>([], "file", false, ["-l", "-t"]);
+
+const filelog = makeSimpleCommand("filelog", filelogFlags);
+
+function parseDate(dateString: string) {
+    // example: 2020/02/15 18:48:43
+    // or: 2020/02/15
+    const matches = /(\d{4})\/(\d{2})\/(\d{2})(?: (\d{2}):(\d{2}):(\d{2}))?/.exec(
+        dateString.trim()
+    );
+
+    if (matches) {
+        const [, year, month, day, hours, minutes, seconds] = matches;
+
+        const hasTime = hours && minutes && seconds;
+
+        return new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            hasTime ? parseInt(hours) : undefined,
+            hasTime ? parseInt(minutes) : undefined,
+            hasTime ? parseInt(seconds) : undefined
+        );
+    }
+}
+
+function parseFilelogItem(item: string[]) {
+    const [header, ...desc] = item;
+    // example:
+    // ... #5 change 45 edit on 2020/02/15 18:48:43 by super@matto (text)
+    const matches = /^\.{3} #(\d+) change (\d+) (\w+) on (.*?) by (.*?)@(.*?) (.*?)$/.exec(
+        header
+    );
+    if (matches) {
+        const [, revision, chnum, operation, date, user, client] = matches;
+        const description = desc
+            .filter(l => l.startsWith("\t"))
+            .map(l => l.slice(1))
+            .join("\n");
+
+        return {
+            description,
+            revision,
+            chnum,
+            operation,
+            date: parseDate(date),
+            user,
+            client
+        };
+    }
+}
+
+function parseFilelogOutput(output: string) {
+    const lines = splitIntoLines(output);
+
+    const histories = sectionArrayBy(lines, line => line.startsWith("... #"));
+
+    return histories.map(parseFilelogItem).filter(isTruthy);
+}
+
+export async function getFileHistory(resource: vscode.Uri, options: FilelogOptions) {
+    const output = await filelog(resource, options);
+    return parseFilelogOutput(output);
+}

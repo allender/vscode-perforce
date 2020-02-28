@@ -15,6 +15,7 @@ import * as fs from "fs";
 import * as Ini from "ini";
 import { Disposable } from "vscode";
 import { WorkspaceConfigAccessor } from "./ConfigService";
+import { PerforceTimelineProvider } from "./TimelineProvider";
 
 let _isRegistered = false;
 const _disposable: vscode.Disposable[] = [];
@@ -264,6 +265,10 @@ function doOneTimeRegistration() {
         // todo: fix dependency / order of operations issues
         PerforceCommands.registerCommands();
         PerforceSCMProvider.registerCommands();
+        vscode.workspace.registerTimelineProvider(
+            ["file", "perforce"],
+            new PerforceTimelineProvider()
+        );
     }
 }
 

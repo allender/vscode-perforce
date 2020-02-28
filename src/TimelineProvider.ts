@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as p4 from "./api/PerforceApi";
 import { Utils } from "./Utils";
 
 export class PerforceTimelineProvider implements vscode.TimelineProvider {
@@ -8,26 +9,26 @@ export class PerforceTimelineProvider implements vscode.TimelineProvider {
 
     async provideTimeline(
         uri: vscode.Uri,
-        cursor: vscode.TimelineCursor,
-        token: vscode.CancellationToken
+        _cursor: vscode.TimelineCursor,
+        _token: vscode.CancellationToken
     ): Promise<vscode.Timeline> {
-        const stdout = await Utils.runCommand(uri, "filelog", {
-            file: uri,
-            prefixArgs: "-L"
-        });
-        throw new Error("Method not implemented.");
-    }
-
-    private parseFileLog(stdout: string) {
-        const parts = stdout.split(/\r?\n\r?\n/g);
-        for (let i = 0; i < parts.length; i += 2) {
-            const firstLine = parts[i];
-
-            const desc = parts[i + 1] ?? "";
-            // remove leading tabs
-            desc.split(/\r?\n/)
-                .map(dl => dl.slice(1))
-                .join("\n");
+        try {
+            const fromFile =
+                uri.scheme === "perforce"
+                    ? Utils.getDepotPathFromDepotUri(uri)
+                    : { fsPath: uri.fsPath };
+            const items = await p4.getFileHistory(uri, { file: fromFile });
+            return {
+                items: items.map<vscode.TimelineItem>(item => {
+                    return {
+                        timestamp: item.date?.getTime() ?? 0,
+                        label: "#" + item.revision,
+                        description: item.description
+                    };
+                })
+            };
+        } catch {
+            return { items: [] };
         }
     }
 }
