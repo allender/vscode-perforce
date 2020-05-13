@@ -1,6 +1,8 @@
 import { SourceControlResourceDecorations, Uri } from "vscode";
 import { Status } from "./Status";
 import * as path from "path";
+import { getStatusText } from "../test/helpers/testUtils";
+import { isTruthy } from "../TsUtils";
 
 export class DecorationProvider {
     private static _iconsRootPath: string = path.join(
@@ -11,20 +13,32 @@ export class DecorationProvider {
 
     public static getDecorations(
         statuses: Status[],
-        isShelved: boolean
+        isShelved: boolean,
+        isUnresolved: boolean
     ): SourceControlResourceDecorations {
         const status = this.getDominantStatus(statuses);
         const light = {
-            iconPath: DecorationProvider.getIconPath(status, isShelved, "light")
+            iconPath: DecorationProvider.getIconPath(
+                status,
+                isShelved,
+                isUnresolved,
+                "light"
+            ),
         };
         const dark = {
-            iconPath: DecorationProvider.getIconPath(status, isShelved, "dark")
+            iconPath: DecorationProvider.getIconPath(
+                status,
+                isShelved,
+                isUnresolved,
+                "dark"
+            ),
         };
 
         const strikeThrough = DecorationProvider.useStrikeThrough(status);
         const faded = isShelved;
+        const tooltip = this.getTooltipText(status, isShelved, isUnresolved);
 
-        return { strikeThrough, faded, light, dark };
+        return { strikeThrough, faded, light, dark, tooltip };
     }
 
     private static getDominantStatus(statuses: Status[]) {
@@ -39,7 +53,7 @@ export class DecorationProvider {
 
         // The most dominant types are ADD, EDIT, and DELETE
         let index: number = statuses.findIndex(
-            s => s === Status.ADD || s === Status.EDIT || s === Status.DELETE
+            (s) => s === Status.ADD || s === Status.EDIT || s === Status.DELETE
         );
         if (index >= 0) {
             return statuses[index];
@@ -47,7 +61,7 @@ export class DecorationProvider {
 
         // The next dominant type is MOVE
         index = statuses.findIndex(
-            s => s === Status.MOVE_ADD || s === Status.MOVE_DELETE
+            (s) => s === Status.MOVE_ADD || s === Status.MOVE_DELETE
         );
         if (index >= 0) {
             return statuses[index];
@@ -55,6 +69,19 @@ export class DecorationProvider {
 
         // After that, just return the first one
         return statuses[0];
+    }
+
+    private static getTooltipText(
+        status: Status | undefined,
+        isShelved: boolean,
+        isUnresolved: boolean
+    ) {
+        const items = [
+            isShelved ? "Shelved" : undefined,
+            status !== undefined ? getStatusText(status) : undefined,
+            isUnresolved ? "NEEDS RESOLVE" : undefined,
+        ];
+        return items.filter(isTruthy).join(" - ");
     }
 
     private static getIconUri(iconName: string, theme: string): Uri {
@@ -66,9 +93,13 @@ export class DecorationProvider {
     private static getIconPath(
         status: Status | undefined,
         isShelved: boolean,
+        isUnresolved: boolean,
         theme: string
     ): Uri | undefined {
-        const base = "status-" + (isShelved ? "shelve-" : "");
+        const base =
+            "status-" +
+            (isShelved ? "shelve-" : "") +
+            (isUnresolved ? "unresolved-" : "");
         switch (status) {
             case Status.ADD:
                 return DecorationProvider.getIconUri(base + "add", theme);

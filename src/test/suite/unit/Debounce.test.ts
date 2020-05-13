@@ -1,8 +1,8 @@
 import { expect } from "chai";
 
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
-import * as sinonChai from "sinon-chai";
+import chaiAsPromised from "chai-as-promised";
+import sinonChai from "sinon-chai";
 
 import * as sinon from "sinon";
 import { debounce, DebouncedFunction } from "../../../Debounce";
@@ -11,7 +11,7 @@ chai.use(sinonChai);
 chai.use(chaiAsPromised);
 
 function timeout(ms: number) {
-    return new Promise(res => {
+    return new Promise((res) => {
         setTimeout(() => {
             res();
         }, ms);

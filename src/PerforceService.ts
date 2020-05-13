@@ -1,49 +1,22 @@
-import { workspace, Uri } from "vscode";
+import {
+    workspace,
+    Uri,
+    FileType,
+    Task,
+    tasks,
+    ShellExecution,
+    Disposable,
+} from "vscode";
 
-import { Utils } from "./Utils";
+import * as PerforceUri from "./PerforceUri";
 import { Display } from "./Display";
 import { PerforceSCMProvider } from "./ScmProvider";
 
 import * as CP from "child_process";
-import * as spawn from "cross-spawn";
+import spawn from "cross-spawn";
 import { CommandLimiter } from "./CommandLimiter";
 import * as Path from "path";
-
-// eslint-disable-next-line @typescript-eslint/interface-name-prefix
-export interface IPerforceConfig {
-    // p4 standard configuration variables
-    p4Client?: string;
-    p4Host?: string;
-    p4Pass?: string;
-    p4Port?: number;
-    p4Tickets?: string;
-    p4User?: string;
-
-    // specific to this exension
-    // use this value as the clientRoot PWD for this .p4config file's location
-    p4Dir?: string;
-
-    // root directory of the user space (or .p4config)
-    localDir: string;
-
-    // whether to strip the localDir when calling espansePath
-    stripLocalDir?: boolean;
-}
-
-export function matchConfig(config: IPerforceConfig, uri: Uri): boolean {
-    // path fixups:
-    const trailingSlash = /^(.*)(\/)$/;
-    let compareDir = Utils.normalize(uri.fsPath);
-    if (!trailingSlash.exec(compareDir)) {
-        compareDir += "/";
-    }
-
-    if (config.localDir === compareDir) {
-        return true;
-    }
-
-    return false;
-}
+import { configAccessor } from "./ConfigService";
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace PerforceService {
@@ -57,36 +30,11 @@ export namespace PerforceService {
 
     let debugModeSetup = false;
 
-    const _configs: { [key: string]: IPerforceConfig } = {};
-
-    export function addConfig(inConfig: IPerforceConfig, workspacePath: string): void {
-        _configs[workspacePath] = inConfig;
-    }
-    export function removeConfig(workspacePath: string): void {
-        delete _configs[workspacePath];
-    }
-    export function getConfig(workspacePath: string): IPerforceConfig {
-        return _configs[workspacePath];
-    }
-    export function convertToRel(path: string): string {
-        const wksFolder = workspace.getWorkspaceFolder(Uri.file(path));
-        const config = wksFolder ? _configs[wksFolder.uri.fsPath] : null;
-        if (
-            !config ||
-            !config.stripLocalDir ||
-            !config.localDir ||
-            config.localDir.length === 0 ||
-            !config.p4Dir ||
-            config.p4Dir.length === 0
-        ) {
-            return path;
-        }
-
-        const pathN = Utils.normalize(path);
-        if (pathN.startsWith(config.localDir)) {
-            path = pathN.slice(config.localDir.length);
-        }
-        return path;
+    export function getOverrideDir(workspaceUri?: Uri) {
+        const dir = workspace
+            .getConfiguration("perforce", workspaceUri)
+            .get<string>("dir");
+        return dir === "none" ? undefined : dir;
     }
 
     function getPerforceCmdPath(): string {
@@ -113,19 +61,12 @@ export namespace PerforceService {
     }
 
     function getPerforceCmdParams(resource: Uri): string[] {
-        const p4User = workspace
-            .getConfiguration("perforce", resource)
-            .get("user", "none");
-        const p4Client = workspace
-            .getConfiguration("perforce", resource)
-            .get("client", "none");
-        const p4Port = workspace
-            .getConfiguration("perforce", resource)
-            .get("port", "none");
-        const p4Pass = workspace
-            .getConfiguration("perforce", resource)
-            .get("password", "none");
-        const p4Dir = workspace.getConfiguration("perforce", resource).get("dir", "none");
+        const config = workspace.getConfiguration("perforce", resource);
+        const p4User = config.get("user", "none");
+        const p4Client = config.get("client", "none");
+        const p4Port = config.get("port", "none");
+        const p4Pass = config.get("password", "none");
+        const p4Dir = config.get("dir", "none");
 
         const ret: string[] = [];
 
@@ -142,17 +83,6 @@ export namespace PerforceService {
         ret.push(...buildCmd(p4Pass, "-P"));
         ret.push(...buildCmd(p4Dir, "-d"));
 
-        // later args override earlier args
-        const wksFolder = workspace.getWorkspaceFolder(resource);
-        const config = wksFolder ? getConfig(wksFolder.uri.fsPath) : null;
-        if (config) {
-            ret.push(...buildCmd(config.p4User, "-u"));
-            ret.push(...buildCmd(config.p4Client, "-c"));
-            ret.push(...buildCmd(config.p4Port, "-p"));
-            ret.push(...buildCmd(config.p4Pass, "-P"));
-            ret.push(...buildCmd(config.p4Dir, "-d"));
-        }
-
         return ret;
     }
 
@@ -163,13 +93,14 @@ export namespace PerforceService {
         command: string,
         responseCallback: (err: Error | null, stdout: string, stderr: string) => void,
         args?: string[],
-        input?: string
+        input?: string,
+        useTerminal?: boolean
     ): void {
         if (debugModeActive && !debugModeSetup) {
             limiter.debugMode = true;
             debugModeSetup = true;
         }
-        limiter.submit(onDone => {
+        limiter.submit((onDone) => {
             execCommand(
                 resource,
                 command,
@@ -179,7 +110,8 @@ export namespace PerforceService {
                     responseCallback(...rest);
                 },
                 args,
-                input
+                input,
+                useTerminal
             );
         }, `<JOB_ID:${++id}:${command}>`);
     }
@@ -209,33 +141,45 @@ export namespace PerforceService {
         });
     }
 
-    function execCommand(
+    async function isDirectory(uri: Uri): Promise<boolean> {
+        try {
+            return (await workspace.fs.stat(uri)).type === FileType.Directory;
+        } catch {}
+        return false;
+    }
+
+    async function execCommand(
         resource: Uri,
         command: string,
         responseCallback: (err: Error | null, stdout: string, stderr: string) => void,
         args?: string[],
-        input?: string
-    ): void {
-        const wksFolder = workspace.getWorkspaceFolder(resource);
-        const config = wksFolder ? getConfig(wksFolder.uri.fsPath) : null;
-        const wksPath = wksFolder?.uri.fsPath;
+        input?: string,
+        useTerminal?: boolean
+    ) {
+        const actualResource = PerforceUri.getUsableWorkspace(resource) ?? resource;
         const cmd = getPerforceCmdPath();
 
-        const allArgs: string[] = getPerforceCmdParams(resource);
+        const allArgs: string[] = getPerforceCmdParams(actualResource);
         allArgs.push(command);
 
-        if (args !== undefined) {
-            if (config && config.stripLocalDir) {
-                args = args.map(arg => arg.replace(config.localDir, ""));
-            }
-
+        if (args) {
             allArgs.push(...args);
         }
 
-        const cwd = config?.localDir ?? wksPath ?? Path.dirname(resource.fsPath);
+        const isDir = await isDirectory(actualResource);
+
+        const cwd = isDir ? actualResource.fsPath : Path.dirname(actualResource.fsPath);
+
         const env = { ...process.env, PWD: cwd };
         const spawnArgs: CP.SpawnOptions = { cwd, env };
-        spawnPerforceCommand(cmd, allArgs, spawnArgs, responseCallback, input);
+        spawnPerforceCommand(
+            cmd,
+            allArgs,
+            spawnArgs,
+            responseCallback,
+            input,
+            useTerminal
+        );
     }
 
     function spawnPerforceCommand(
@@ -243,9 +187,24 @@ export namespace PerforceService {
         allArgs: string[],
         spawnArgs: CP.SpawnOptions,
         responseCallback: (err: Error | null, stdout: string, stderr: string) => void,
+        input?: string,
+        useTerminal?: boolean
+    ) {
+        logExecutedCommand(cmd, allArgs, input, spawnArgs);
+        if (useTerminal) {
+            spawnInTerminal(cmd, allArgs, spawnArgs, responseCallback);
+        } else {
+            spawnNormally(cmd, allArgs, spawnArgs, responseCallback, input);
+        }
+    }
+
+    function spawnNormally(
+        cmd: string,
+        allArgs: string[],
+        spawnArgs: CP.SpawnOptions,
+        responseCallback: (err: Error | null, stdout: string, stderr: string) => void,
         input?: string
     ) {
-        logExecutedCommand(cmd, allArgs, spawnArgs);
         const child = spawn(cmd, allArgs, spawnArgs);
 
         let called = false;
@@ -270,13 +229,59 @@ export namespace PerforceService {
         });
     }
 
-    function logExecutedCommand(cmd: string, args: string[], spawnArgs: CP.SpawnOptions) {
+    let taskId = 0;
+
+    async function spawnInTerminal(
+        cmd: string,
+        allArgs: string[],
+        spawnArgs: CP.SpawnOptions,
+        responseCallback: (err: Error | null, stdout: string, stderr: string) => void
+    ) {
+        const editor = configAccessor.resolveP4EDITOR;
+        const env = editor ? { P4EDITOR: editor } : undefined;
+        const exec = new ShellExecution(cmd, allArgs, {
+            cwd: spawnArgs.cwd,
+            env,
+        });
+        try {
+            const myTask = new Task(
+                { type: "perforce" },
+                "Perforce #" + ++taskId,
+                "perforce",
+                exec
+            );
+            await tasks.executeTask(myTask);
+            const disposable: Disposable = tasks.onDidEndTask((task) => {
+                if (task.execution.task.name === myTask.name) {
+                    responseCallback(null, "", "");
+                    disposable.dispose();
+                }
+            });
+        } catch (err) {
+            responseCallback(err, "", "");
+        }
+    }
+
+    function escapeCommand(args: string[]) {
+        return args.map((arg) => `'${arg.replace(/'/g, `'\\''`)}'`);
+    }
+
+    function logExecutedCommand(
+        cmd: string,
+        args: string[],
+        input: string | undefined,
+        spawnArgs: CP.SpawnOptions
+    ) {
         // not necessarily using these escaped values, because cross-spawn does its own escaping,
         // but no sensible way of logging the unescaped array for a user. The output command line
         // should at least be copy-pastable and work
-        const escapedArgs = args.map(arg => `'${arg.replace(/'/g, `'\\''`)}'`);
+        const escapedArgs = escapeCommand(args);
         const loggedCommand = [cmd].concat(escapedArgs);
-        Display.channel.appendLine(spawnArgs.cwd + ": " + loggedCommand.join(" "));
+        const censoredInput = args[0].includes("login") ? "***" : input;
+        const loggedInput = input ? " < " + censoredInput : "";
+        Display.channel.appendLine(
+            spawnArgs.cwd + ": " + loggedCommand.join(" ") + loggedInput
+        );
     }
 
     async function getResults(child: CP.ChildProcess): Promise<string[]> {
@@ -320,7 +325,7 @@ export namespace PerforceService {
     export function getClientRoot(resource: Uri): Promise<string> {
         return new Promise((resolve, reject) => {
             PerforceService.executeAsPromise(resource, "info")
-                .then(stdout => {
+                .then((stdout) => {
                     let clientRootIndex = stdout.indexOf("Client root: ");
                     if (clientRootIndex === -1) {
                         reject("P4 Info didn't specify a valid Client Root path");
@@ -339,19 +344,19 @@ export namespace PerforceService {
                         stdout.substring(clientRootIndex, endClientRootIndex).trimRight()
                     );
                 })
-                .catch(err => {
+                .catch((err) => {
                     reject(err);
                 });
         });
     }
 
-    export function getConfigFilename(resource: Uri): Promise<string> {
+    export function getConfigFilename(resource: Uri): Promise<string | undefined> {
         return new Promise((resolve, reject) => {
             PerforceService.executeAsPromise(resource, "set", ["-q"])
-                .then(stdout => {
+                .then((stdout) => {
                     let configIndex = stdout.indexOf("P4CONFIG=");
                     if (configIndex === -1) {
-                        resolve(".p4config");
+                        resolve(undefined);
                         return;
                     }
 
@@ -359,14 +364,14 @@ export namespace PerforceService {
                     const endConfigIndex = stdout.indexOf("\n", configIndex);
                     if (endConfigIndex === -1) {
                         //reject("P4 set -q parsing for P4CONFIG contains unexpected format");
-                        resolve(".p4config");
+                        resolve(undefined);
                         return;
                     }
 
                     //Resolve with p4 config filename as string
                     resolve(stdout.substring(configIndex, endConfigIndex).trimRight());
                 })
-                .catch(err => {
+                .catch((err) => {
                     reject(err);
                 });
         });

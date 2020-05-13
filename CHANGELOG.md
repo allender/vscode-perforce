@@ -1,11 +1,175 @@
 # Change log
 
+## [4.7.0] - 2020-05-11
+
+* Add the ability to edit the full change spec for a changelist in the editor - accessible from the SCM context menu and the changelist quick pick
+* Add the ability to edit the job spec for a job, accessible from the job quick pick
+* Fix status bar errors showing when there were no results for a search, or no results with shelved files
+
+## [4.6.0] - 2020-05-08
+
+A few quality of life improvements to quick picks and searching
+
+* In the world of quick picks:
+  * Add a 'job' quick pick - click on a job from the changelist quick pick to see job details and other changelists fixing the same job
+  * Clicking on a shelved file from the changelist quick pick now shows options for the shelved file such as viewing and diffing the shelved file
+  * When unshelving a changelist through a branch mapping (via the change quick pick), entering `*` in the branch name will act as a wildcard and search for matching branches
+  * The changelist quick pick now includes the changelist status (pending / submitted) in its title
+  * Add 'go to job' and 'go to changelist' commands, accessible from the SCM provider's context menu and the command palette
+  * Add 'open last quick pick' / 'open recent quick pick' to the SCM provider's context menu and the command palette
+* In the changelist search:
+  * Changelist search results now show shelved files, if there are any
+  * When entering user and client filters, entering `*` will act as a wildcard and search for matching users / clients
+  * When entering user, client and path filters, you no longer need to click on the 'Enter a {thing}' option before entering the text, you can just start typing straight away
+* When logging in from the command palette, and you have multiple perforce clients in your workspace, it will now prompt to ask you which one to log in with
+* Add a variety of new keyboard shortcuts for common actions (in addition to the existing shortcuts):
+
+| shortcut           | action                | Description |
+|--------------------|-----------------------|-------------|
+| `alt+p alt+d`      | perforce.diffRevision | Choose a revision of the open file to diff against |
+| `alt+p h`          | perforce.showOpenFileHistory | Show file history for the open file |
+| `alt+p m`          | perforce.move | Move or rename the current file |
+| `alt+p p`          | perforce.showLastQuickPick | Show the last opened quick pick |
+| `alt+p alt+p`      | perforce.showRecentQuickPick | Choose a recently opened quick pick to reopen |
+| `alt+p down`       | perforce.syncOpenFile | Sync the open file |
+| `alt+p alt+down`   | perforce.syncOpenFileRevision | Choose a specific revision of the open file to sync |
+| `alt+p shift+down` | perforce.Sync | Sync everything (just run p4 sync) |
+| `alt+p left`       | perforce.diffPrevious | Diff the open file against the previous revision |
+| `alt+p right`      | perforce.diffNext | Go to the next revision for the open diff |
+| `alt+p up`         | perforce.submitSingle | Submit the current file (provided it is open in the default changelist) |
+
+## [4.5.0] - 2020-05-03
+
+* Add new commands to the explorer context menu. If you don't like them, each section can be disabled using the settings that start with `perforce.explorer.`...
+  * Sync (#128)
+  * Add / Edit / Revert
+  * Move / rename (#13)
+  * Delete
+* Add 'sync' and 'sync revision' to the status bar menu
+* Add 'sync this revision' to the quick pick when looking at file history
+* Add confirmation dialog when reverting a file from the status bar menu
+* Add 'file history' to the status bar menu
+
+
+## [4.4.2] - 2020-04-29
+
+* Fix the issue with diffs and the cpp extension again, for cases where the diff is started from the SCM provider (#119)
+* Fix issue annotating a file, where the file has a revision integrated from multiple source revisions (#120)
+
+## [4.4.1] - 2020-04-28
+
+* Fix problems relating to diffs:
+  * When using remote SSH and diffing the working file against a depot revision, the "diff previous" command now works correctly instead of doing the same diff again (#118)
+  * When using the cpp extension locally, it could previously complain about missing files when performing a diff (#119) 
+* Fix issue where, after focusing a changelist in the changelist search, clicking the individual files did not work
+
+## [4.4.0] - 2020-04-27
+
+* Add `fileShelveMode` setting to control behaviour when shelving or unshelving an individual file. Choose whether to revert the open file when it is shelved, and delete the shelved file when it is unshelved. (#91)
+  * The default is to prompt, but you can also choose to always revert / delete or never revert / delete
+* Fix a missing tooltip for the 'add' icon in SCM view
+* After a changelist is unshelved using the quick pick, refresh the SCM view before prompting about unresolved files
+
+## [4.3.0] - 2020-04-25
+
+* Add "unshelve into" and "unshelve via branch" to the changelist quick pick, e.g. when searching for changelists (#103)
+* Icons on the SCM provider now show a red outline if the file needs resolving (#114)
+  * Note - [icons do not show in Remote-SSH](https://github.com/microsoft/vscode-remote-release/issues/2829)
+* Add "Resolve changelist" and "Re-resolve changelist" to the SCM provider context menu (#114)
+  * This is a fairly rudimentary resolve that just opens up the standard `p4 resolve` command line in a terminal view
+  * A new setting is added to change the P4EDITOR when resolving - by default it leaves the P4EDITOR alone. It can be set to `code --wait` to use vscode to edit the merge file, but this value does not seem to work on windows, and is unlikely to be useful with remote-SSH
+* Show a warning when an unshelved file needs resolving
+* Add a warning when both slevesque.perforce and mjcrouch.perforce are enabled
+* When annotating, and hovering over a line, "annotate" is now "annotate previous" (#107)
+* Fix an issue where, when the same perforce client was found via two different hostnames, an invisible duplicate SCM provider would be created
+
+## [4.2.0] - 2020-04-21
+
+* Add a changelist search to the SCM provider panel. This allows you to find changelists using a similar set of filters to p4 / P4V - [Feedback welcome](https://github.com/mjcrouch/vscode-perforce/issues/104) (#68)
+* More of the changelist description is visible in the SCM provider view
+* Now maintains the current position in the file when opening annotations (#106)
+* Fix an issue where opening the annotations for a different revision of the current file could apply the annotations to the wrong revision
+
+## [4.1.0] - 2020-04-14
+
+* The extension now checks for perforce clients when you open files outside of the workspace. If a new perforce client is found, it will create an SCM provider so you can manage changelists in that client. This is on by default but can be disabled using the setting `perforce.scm.activateOnFileOpen`
+* Add an option to hide *changelists* that only contain non-workspace files - instead of hiding all files outside of the workspace (#90)
+* Add support for changelist-based review tools other than swarm - specify a full URL including "${chnum}" in the `perforce.swarmHost` setting (#88)
+* Add "open in review tool" context menu item to changelists when the swarm host is specified (#94)
+* Add progress indicators when annotating or using the quick pick, for files with lots of lines or lots of revisions where it can take a little longer
+* Fix an issue where various commands would not work if the depot name contained any upper case characters (#97)
+* Fix shelved files not being hidden when "hide non-workspace files" was selected (#98)
+
+## [4.0.0] - 2020-04-10
+
+**Possible breaking changes in this release!** - this is the main reason for the major version update to v4. The possible breaking changes are mainly around the use of P4CONFIG files.
+
+To mitigate this, the perforce output log has been improved with much more detail, the readme has been rewritten with a new [setup](README.md#setup) section, and a [migration guide](MIGRATION.md) has been created with details about the changes, in case there are any issues. If you are still having problems, please [search for or raise an issue](https://github.com/mjcrouch/vscode-perforce/issues)
+
+### Activation Changes (#41)
+
+Initialisation of the SCM provider view has been mostly rewritten! Now, we rely more on perforce itself to tell us about your perforce client workspace, instead of building unnecessary logic into the extension. This change was really important - it resolves some common problems with finding your perforce client, and provides a better base for future improvements.
+
+However, this comes with a couple of small trade-offs:
+
+* **Breaking Change**: If your `P4CONFIG` variable is unset, but you previously used a `.p4config` file for your workspace, this SCM provider will no longer be created. The extension should warn you on startup if this is the case. If this occurs, it is easy to resolve by setting your perforce `P4CONFIG` variable to `.p4config` and restarting VS Code
+* **Removes support** for an undocumented feature, where `P4DIR` could be added to a p4config file as an instruction to the extension
+
+Otherwise, this version *should* be backward compatible. The following changes have been made in the area of activation:
+
+* Support multiple P4CONFIG files in a single workspace, allowing you to work across multiple perforce client workspaces from a single VS Code folder
+* Properly support variable expansions such as `$home` in P4CONFIG files, e.g. as seen in the default 'personal' server setup
+* Support opening a workspace where the detected perforce client root is in a directory *underneath* the top-level of the open folder (previously, it would only work if the VS Code workspace was underneath the perforce client root)
+* Add detailed perforce output logging, hopefully helping you to understand 'why' when we didn't create an SCM provider
+* Add 'welcome message' in the SCM provider view when a perforce client has not been detected
+* Perforce commands such as 'edit' and 'revert' are now *always* registered, even with `activationMode` set to `autodetect` - meaning that it's now possible to run these commands on open files without a folder being open (using the command palette)
+* No longer create an unusable SCM provider when `activationMode` is `always` and no perforce client was found at-all
+* Fix duplicate SCM providers when the same perforce client was found multiple times in a VS Code multi-root workspace
+
+### Other Changes
+
+* Add diff next / previous arrows in the editor title bar (#67). This allows you to click through revisions. Behaviour for these icons can be changed with the setting `perforce.editorButtons.diffPrevAndNext`
+* Add [file and changelist quick pick](Readme.md#New-revision-&-changelist-quick-pick) (#66) to see and navigate through more information about:
+  * the depot revision you are viewing
+  * the details of the changelist, and the other files in the changelist
+  * integrations to and from the revision
+  * other revisions of the file
+  * ... and more!
+* You must be viewing a depot file to open the quick pick (e.g. if you diff a local file against the depot file, you must click on the left hand side of the diff, and then click the 'commit' icon on the editor title menu)
+* You can also reach the new quick pick in annotation mode, from the hover message for a change
+  * More ways are coming soon, after VS Code's timeline view is finalised!
+* We now use VS Code's built in 'codicons' for almost all icons. This provides a more consistent style with the editor. (further context menu improvements will be coming when context menu support is improved in a later VS code release)
+* Automatically refresh the SCM provider view when the user logs on - saves a click!
+* Fix an issue where, when there were multiple SCM providers with different users or servers, the "login" command logged you in to the server for the editor file you had open, not the server you chose
+* The minimum VS Code version is now 1.44.0
+
+## [3.10.0] - 2020-03-17
+* Add 'Edit and Save' command. This may be useful if you are working with a slow or distant perforce server, as it will not try to save the file until the perforce command has completed. (#72)
+* Fix an issue where context variables (for use in 'when' clauses) were not set correctly
+
+## [3.9.1] - 2020-03-16
+* Resolves an issue where, if the default change spec contains an empty field, it could prevent new changelists from being saved, and prevent 'submit selected files' from working (#74)
+
+## [3.9.0] - 2020-03-16
+* Add vscode context variables and commands, to get info about the currently open file, such as the changelist number. This could be useful for custom tasks, keyboard shortcuts etc.
+* Add command inputs to the perforce log where appropriate (#74)
+* Fix a minor issue where a file not in the client root would show as "not opened for edit" in the status bar
+
+## [3.8.0] - 2020-03-13
+* Replaced the annotation view with a new, more advanced view showing a lot more detail about each change (#33)
+  * Use the same command as before - "Perforce: Annotate" - to open a new tab showing the annotations for the current file
+  * It is possible to customise the gutter to change the level of detail using the experimental `perforce.annotate.gutterColumns` setting
+  * By default, the annotation view follows branch actions. This can be disabled with `perforce.annotate.followBranches`
+  * There is much more still to do - all feedback welcome!
+* Add an inline context item to open a file from the scm provider view (#63 - thanks @allender)
+
 ## [3.7.0] - 2020-03-09
-* Add an option to hide the submit button from changelists, to prevent accidental submits
+* Add an option to hide the submit button from changelists, to prevent accidental submits (thanks @joshuaferrara)
 * Add an option to prompt for confirmation before submitting a saved changelist, for the same reason. This option is enabled by default
-* Fix problems with files being incorrectly added or deleted during an external operation like p4 sync, when `deleteOnFileDelete` or `addOnFileCreate` were enabled (#52)
+* Fix problems with files being incorrectly added or deleted during an external operation like p4 sync, when `deleteOnFileDelete` or `addOnFileCreate` were enabled (#52 - thanks @allender)
   * Previously, the extension was watching for filesystem changes to perform these automatic actions. This meant external sync commands, and also things like changes to `node_modules` would be picked up by the extension. It now only attempts to perform the add or delete action when files are added or deleted from *within* the IDE, and not via an external tool.
   * Previously, the extension would incorrectly use `.p4ignore` files to decide whether to delete a file or not. This was not actually correct behaviour, as deletions are not subject to p4ignore rules. We now leave it up to perforce to decide what to ignore (see #5)
+* The minimum VS Code version is now 1.42.0
 
 ## [3.6.2] - 2020-03-02
 * Fix an issue where shelved files that are not mapped in the client view would prevent the scm view from loading (#50)
@@ -219,7 +383,21 @@
 * `edit` command on opened file
 * `revert` command on opened file
 
-[3.7.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.6.0...3.7.0
+[4.7.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.6.0...4.7.0
+[4.6.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.5.0...4.6.0
+[4.5.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.4.2...4.5.0
+[4.4.2]: https://github.com/mjcrouch/vscode-perforce/compare/4.4.1...4.4.2
+[4.4.1]: https://github.com/mjcrouch/vscode-perforce/compare/4.4.0...4.4.1
+[4.4.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.3.0...4.4.0
+[4.3.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.2.0...4.3.0
+[4.2.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.1.0...4.2.0
+[4.1.0]: https://github.com/mjcrouch/vscode-perforce/compare/4.0.0...4.1.0
+[4.0.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.10.0...4.0.0
+[3.10.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.9.1...3.10.0
+[3.9.1]: https://github.com/mjcrouch/vscode-perforce/compare/3.9.0...3.9.1
+[3.9.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.8.0...3.9.0
+[3.8.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.7.0...3.8.0
+[3.7.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.6.2...3.7.0
 [3.6.2]: https://github.com/mjcrouch/vscode-perforce/compare/3.6.1...3.6.2
 [3.6.1]: https://github.com/mjcrouch/vscode-perforce/compare/3.6.0...3.6.1
 [3.6.0]: https://github.com/mjcrouch/vscode-perforce/compare/3.5.2...3.6.0

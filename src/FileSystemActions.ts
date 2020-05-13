@@ -10,7 +10,7 @@ import {
     Uri,
     TextDocumentSaveReason,
     FileType,
-    FileWillDeleteEvent
+    FileWillDeleteEvent,
 } from "vscode";
 
 import * as micromatch from "micromatch";
@@ -18,7 +18,8 @@ import * as micromatch from "micromatch";
 import { Display } from "./Display";
 import { PerforceCommands } from "./PerforceCommands";
 import { PerforceSCMProvider } from "./ScmProvider";
-import { ConfigAccessor } from "./ConfigService";
+import { configAccessor } from "./ConfigService";
+import * as Path from "path";
 
 export interface FileSystemEventProvider {
     onWillSaveTextDocument: typeof workspace.onWillSaveTextDocument;
@@ -35,29 +36,25 @@ export default class FileSystemActions {
     private _disposable: Disposable;
     private static _eventsDisposable: Disposable;
 
-    constructor(workspace: FileSystemEventProvider, config: ConfigAccessor) {
+    constructor(workspace: FileSystemEventProvider) {
         const subscriptions: Disposable[] = [];
 
-        window.onDidChangeActiveTextEditor(Display.updateEditor, this, subscriptions);
-
         if (PerforceCommands.checkFolderOpened()) {
-            FileSystemActions.registerEvents(workspace, config);
+            FileSystemActions.registerEvents(workspace);
         }
 
         this._disposable = Disposable.from.apply(this, subscriptions);
     }
 
-    private static registerEvents(
-        workspace: FileSystemEventProvider,
-        config: ConfigAccessor
-    ) {
+    private static registerEvents(workspace: FileSystemEventProvider) {
+        const config = configAccessor;
         if (!FileSystemActions._eventRegistered) {
             FileSystemActions._eventsDisposable?.dispose();
 
             const eventSubscriptions: Disposable[] = [];
 
             if (config.editOnFileSave) {
-                workspace.onWillSaveTextDocument(e => {
+                workspace.onWillSaveTextDocument((e) => {
                     e.waitUntil(FileSystemActions.onWillSaveFile(e.document, e.reason));
                 }, eventSubscriptions);
             }
@@ -177,22 +174,25 @@ export default class FileSystemActions {
 
         const fullUri = isDirectory ? uri.with({ path: uri.path + "/..." }) : uri;
 
+        // run from the containing location (can't run from the directory as it probably doesn't exist any more)
+        const runFrom = Uri.file(Path.dirname(uri.fsPath));
+
         // DO NOT AWAIT the revert, because we are holding up the deletion
-        PerforceCommands.p4revertAndDelete(fullUri);
+        PerforceCommands.p4revertAndDelete(fullUri, runFrom);
     }
 
     private static shouldExclude(uri: Uri): boolean {
         const fileExcludes = Object.keys(workspace.getConfiguration("files").exclude);
 
         return micromatch.isMatch(uri.fsPath, fileExcludes, {
-            dot: true
+            dot: true,
         });
     }
 
     private static onFilesDeleted(filesDeleted: FileWillDeleteEvent) {
         const promises = filesDeleted.files
-            .filter(uri => !FileSystemActions.shouldExclude(uri))
-            .map(uri => FileSystemActions.deleteFileOrDirectory(uri));
+            .filter((uri) => !FileSystemActions.shouldExclude(uri))
+            .map((uri) => FileSystemActions.deleteFileOrDirectory(uri));
 
         filesDeleted.waitUntil(Promise.all(promises));
     }
